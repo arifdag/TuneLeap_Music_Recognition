@@ -1,7 +1,13 @@
 ﻿from motor.motor_asyncio import AsyncIOMotorClient
+import os
+from dotenv import load_dotenv
 
-MONGO_URI = "mongodb://localhost:27017"
-DB_NAME = "musicdb"
+# Load environment variables
+load_dotenv()
+
+# Get MongoDB URI and DB name from environment variables
+MONGO_URI = os.getenv("MONGODB_URI")
+DB_NAME = os.getenv("DB_NAME")
 
 client = AsyncIOMotorClient(MONGO_URI)
 db = client[DB_NAME]
