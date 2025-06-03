@@ -6,6 +6,8 @@ from fastapi import FastAPI, Depends
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
 
 from db.sql.models import Base, Artist, Album, Song
 from db.nosql.collections import Fingerprint
@@ -17,6 +19,8 @@ from db.sql.database import get_db
 from core.fingerprint.extractor import extract_fingerprint
 from scipy.io.wavfile import write as wav_write
 import mongoengine
+import mongomock
+
 
 # ---------- Fixtures for DB ----------------
 
@@ -25,7 +29,11 @@ def sqlite_session():
     """
     Create an in-memory SQLite DB and override get_db.
     """
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     Base.metadata.create_all(engine)
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
@@ -38,7 +46,11 @@ def mongo_connection():
     """
     Connect to mongomock in-memory.
     """
-    mongoengine.connect("testdb", host="mongomock://localhost")
+    mongoengine.connect(
+        db="testdb",
+        host=None,
+        mongo_client_class=mongomock.MongoClient
+    )
     yield
     Fingerprint.drop_collection()
     mongoengine.disconnect()
@@ -63,16 +75,7 @@ def client():
     """
     Create a TestClient with all routers included.
     """
-    app = FastAPI()
-    app.include_router(songs_router)
-    app.include_router(recog_router)
-    app.include_router(rec_router)
-    app.include_router(playlist_router)
-    # Health check is in main_app, but for tests, we can add it manually:
-    @app.get("/health")
-    def health():
-        return {"status": "ok"}
-    return TestClient(app)
+    return TestClient(main_app)
 
 # ---------- Helper to create a temporary WAV ----------
 
