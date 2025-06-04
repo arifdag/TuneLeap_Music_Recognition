@@ -31,7 +31,7 @@ class RecognitionHistoryRepository:
         return (
             self.session.query(RecognitionHistory)
             .filter(RecognitionHistory.user_id == user_id)
-            .order_by(RecognitionHistory.recognized_at.desc())
+            .order_by(RecognitionHistory.recognized_at.desc(), RecognitionHistory.id.desc())
             .offset(skip)
             .limit(limit)
             .all()

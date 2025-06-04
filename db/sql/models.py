@@ -87,6 +87,7 @@ class RecognitionHistory(Base):
     song_id = Column(Integer, ForeignKey("songs.id"), nullable=False, index=True)
     recognized_at = Column(DateTime(timezone=True), server_default=func.now())
     client_info = Column(String(255), nullable=True) # e.g., app version, device type
+    source = Column(String(100), nullable=True) # Added source field
 
     user = relationship("User") 
     song = relationship("Song")

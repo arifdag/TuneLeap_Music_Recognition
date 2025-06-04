@@ -5,7 +5,7 @@ import jwt
 import os
 
 # Configuration - Use environment variables
-SECRET_KEY = os.getenv("SECRET_KEY", "your-fallback-secret-key-for-dev") # IMPORTANT: Use a strong, random key in production
+SECRET_KEY = os.getenv("SECRET_KEY", "fallback-secret-key-for-dev") # IMPORTANT: Use a strong, random key in production
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 

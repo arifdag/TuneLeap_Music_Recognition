@@ -46,14 +46,15 @@ def mongo_connection():
     """
     Connect to mongomock in-memory.
     """
+    mongoengine.disconnect(alias="default")  # Disconnect if already connected
     mongoengine.connect(
         db="testdb",
-        host=None,
-        mongo_client_class=mongomock.MongoClient
+        host=None,  # Ensures mongomock is used
+        mongo_client_class=mongomock.MongoClient,
+        alias="default"  # Explicitly use the default alias
     )
     yield
-    Fingerprint.drop_collection()
-    mongoengine.disconnect()
+    mongoengine.disconnect(alias="default")
 
 @pytest.fixture(scope="module", autouse=True)
 def override_get_db(sqlite_session):
@@ -151,8 +152,14 @@ def test_recognize_with_match(client, sqlite_session, tmp_path):
     assert entry["song_id"] == song.id
     assert entry["probability"] == 1.0
 
-def test_auto_playlist_not_found(client):
+def test_auto_playlist_not_found(client, monkeypatch):
     # No songs inserted, so seed not found
+
+    # Monkeypatch to simulate a successfully loaded feature map
+    # that is non-empty (to satisfy get_builder) but does not contain seed_song_id=1
+    monkeypatch.setattr("api.v1.playlists._feature_map_cache", {999: np.array([0.0])}) # Non-empty, but no song_id 1
+    monkeypatch.setattr("api.v1.playlists._feature_map_loaded", True)
+
     resp = client.post("/playlist/auto", params={"seed_song_id": 1, "top_n": 3})
     assert resp.status_code == 404
 
@@ -165,10 +172,12 @@ def test_auto_playlist_success(client, sqlite_session, tmp_path, monkeypatch):
     sqlite_session.add_all([song1, song2]); sqlite_session.commit()
 
     # Monkey-patch feature_map to be deterministic
-    from api.v1.playlists import _feature_map
-    _feature_map.clear()
-    _feature_map[song1.id] = np.array([1.0, 0.0])
-    _feature_map[song2.id] = np.array([0.9, 0.1])
+    test_feature_map_cache = {
+        song1.id: np.array([1.0, 0.0]),
+        song2.id: np.array([0.9, 0.1])
+    }
+    monkeypatch.setattr("api.v1.playlists._feature_map_cache", test_feature_map_cache)
+    monkeypatch.setattr("api.v1.playlists._feature_map_loaded", True)
 
     resp = client.post("/playlist/auto", params={"seed_song_id": song1.id, "top_n": 1})
     assert resp.status_code == 200

@@ -21,6 +21,7 @@ def sqlite_session():
 @pytest.fixture(scope="module", autouse=True)
 def mongo_connection():
     # Use mongomock for an in-memory MongoDB instance
+    mongoengine.disconnect()  # Disconnect if already connected
     mongoengine.connect(
         db="testdb",
         host="mongodb://localhost",

@@ -3,8 +3,8 @@ from typing import List, Optional
 from datetime import datetime
 
 # Assuming these files exist in the same directory (api/schemas/)
-from user_schemas import UserResponse
-from song_schemas import SongResponse
+from api.schemas.user_schemas import UserResponse
+from api.schemas.song_schemas import SongResponse
 
 class PlaylistItemBase(BaseModel):
     song_id: int

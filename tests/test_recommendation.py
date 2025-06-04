@@ -1,11 +1,11 @@
 ﻿import pytest
 import numpy as np
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from core.reco.engine import RecommenderEngine
 from core.reco.builder import PlaylistBuilder
-from api.v1.playlists import router as reco_router, _feature_map
+from api.v1.playlists import router as reco_router
 
 @pytest.fixture
 def sample_feature_map(monkeypatch):
@@ -15,15 +15,14 @@ def sample_feature_map(monkeypatch):
       Song 2: vector [0.9, 0.1, 0]
       Song 3: vector [0, 1, 0]
     """
-    feature_map = {
+    feature_map_data = {
         1: np.array([1.0, 0.0, 0.0]),
         2: np.array([0.9, 0.1, 0.0]),
         3: np.array([0.0, 1.0, 0.0]),
     }
-    # Monkey-patch the global feature_map in the endpoint module
-    _feature_map.clear()
-    _feature_map.update(feature_map)
-    return feature_map
+    monkeypatch.setattr("api.v1.playlists._feature_map_cache", feature_map_data.copy())
+    monkeypatch.setattr("api.v1.playlists._feature_map_loaded", True)
+    return feature_map_data
 
 def test_cosine_similarity():
     from core.reco.engine import cosine_similarity

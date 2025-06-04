@@ -33,6 +33,7 @@ def sqlite_db():
 
 @pytest.fixture(scope="module", autouse=True)
 def mongo_connection():
+    mongoengine.disconnect()  # Disconnect if already connected
     mongoengine.connect(
         "testdb",
         host="mongodb://localhost",

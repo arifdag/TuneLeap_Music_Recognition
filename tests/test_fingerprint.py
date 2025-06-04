@@ -10,6 +10,7 @@ import mongomock
 @pytest.fixture(scope="module", autouse=True)
 def mongo_connection():
     # in-memory MongoDB
+    mongoengine.disconnect(alias="default")  # Disconnect if already connected
     mongoengine.connect(
         "testdb",
         host="mongodb://localhost",  # any mongodb URI is fine

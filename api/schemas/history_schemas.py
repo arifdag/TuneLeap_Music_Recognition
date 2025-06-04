@@ -6,6 +6,7 @@ from .song_schemas import SongResponse # Assuming SongResponse is Pydantic V2 co
 class RecognitionHistoryBase(BaseModel):
     song_id: int
     client_info: Optional[str] = None
+    source: Optional[str] = None
 
 class RecognitionHistoryCreate(RecognitionHistoryBase):
     pass

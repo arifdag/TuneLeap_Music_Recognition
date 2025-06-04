@@ -1,0 +1,45 @@
+# requirements.txt
+
+# Alembic for database migrations
+alembic
+
+# Background tasks
+celery
+
+# Web framework
+fastapi
+
+# Testing (usually a dev dependency, but included as per your list)
+httpx
+
+# Cryptography and JWT
+python-jose[cryptography]
+PyJWT
+
+# Audio processing
+librosa
+noisereduce
+numpy
+soundfile # For audio file operations, often used with librosa
+scipy
+
+# ORM and Database
+mongoengine
+email-validator
+passlib[bcrypt] # For password hashing
+bcrypt
+psycopg2-binary # PostgreSQL driver
+pydantic[email]
+redis # For Celery broker and potentially caching
+sqlalchemy
+
+# Utilities
+python-dotenv # For managing environment variables
+python-multipart # For FastAPI file uploads (form data)
+
+# ASGI server
+uvicorn[standard] # For serving FastAPI, [standard] includes websockets and http-tools
+
+# Development/Testing (often separated into a dev-requirements.txt)
+# mongomock # Primarily for testing
+# pytest
