@@ -1,25 +1,20 @@
-﻿# IDE and local environment files
+﻿# IDE configuration files
 .idea/
-.venv/
-venv/
-*.pyc
 
-# Python cache
+# Python cache files
 __pycache__/
+*.pyc
+.pytest_cache/
 
-# CI/CD and Git
-.github/
-.gitignore
-
-# Tests (not needed in production)
+# Testing files and directories
 tests/
+*.wav
 
-# Local run script (not used by Vercel)
-run.sh
+# Temporary files
+tmp/
 
-# Database migrations (not needed at runtime)
-alembic/
-alembic.ini
+# Environment files
+.env
 
-# Documentation
-README.md
+# Virtual environment
+venv/

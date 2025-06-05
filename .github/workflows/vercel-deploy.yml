@@ -28,7 +28,17 @@ jobs:
           DATABASE_URL: "sqlite:///:memory:"
         run: |
           pytest tests/
-      
+
+      - name: Remove unnecessary files before deployment
+        run: |
+          echo "Removing files and directories to reduce deployment size..."
+          rm -rf .idea/
+          rm -rf tests/
+          find . -type d -name "__pycache__" -exec rm -r {} +
+          find . -type f -name "*.pyc" -delete
+          rm -rf .pytest_cache/
+          echo "Cleanup complete."
+
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
       
