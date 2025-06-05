@@ -25,6 +25,7 @@ scipy
 
 # ORM and Database
 mongoengine
+motor
 email-validator
 passlib[bcrypt] # For password hashing
 bcrypt
@@ -41,5 +42,5 @@ python-multipart # For FastAPI file uploads (form data)
 uvicorn[standard] # For serving FastAPI, [standard] includes websockets and http-tools
 
 # Development/Testing (often separated into a dev-requirements.txt)
-# mongomock # Primarily for testing
+mongomock # Primarily for testing
 pytest
