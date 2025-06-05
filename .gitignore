@@ -65,6 +65,7 @@ node_modules/
 .env.development.local
 .env.test.local
 .env.production.local
+Akış Planı.docx
 
 # Logs
 logs/
