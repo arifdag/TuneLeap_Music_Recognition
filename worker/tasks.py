@@ -1,4 +1,5 @@
 ﻿from celery import Celery
+import ssl
 import os
 
 # Fingerprint task imports
@@ -33,8 +34,13 @@ celery_config = {
 }
 
 # Force SSL/TLS for Upstash
+# Force SSL/TLS for Upstash with the correct settings
 if REDIS_URL and "upstash.io" in REDIS_URL:
-    celery_config["broker_use_ssl"] = {'ssl_cert_reqs': 'required'}
+    # Use the correct constant from the ssl module
+    celery_config["broker_use_ssl"] = {
+        'ssl_cert_reqs': ssl.CERT_REQUIRED
+    }
+    # Ensure the URL uses the rediss protocol
     if celery_config["broker_url"].startswith("redis://"):
         celery_config["broker_url"] = celery_config["broker_url"].replace("redis://", "rediss://", 1)
 
