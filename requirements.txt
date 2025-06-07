@@ -40,6 +40,7 @@ python-multipart # For FastAPI file uploads (form data)
 
 # ASGI server
 uvicorn[standard] # For serving FastAPI, [standard] includes websockets and http-tools
+gunicorn
 
 # Development/Testing (often separated into a dev-requirements.txt)
 mongomock # Primarily for testing

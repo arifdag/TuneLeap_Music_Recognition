@@ -1,10 +1,15 @@
-﻿#!/bin/bash
+#!/bin/bash
 
-# Set default values if environment variables are not set
-HOST=${APP_HOST:-0.0.0.0}
-PORT=${APP_PORT:-8000}
-LOG_LEVEL=${LOG_LEVEL:-info}
-WORKERS=${WEB_CONCURRENCY:-4} # Number of Gunicorn workers
+# This script runs the Gunicorn server and the Celery worker.
 
-# Start Gunicorn with Uvicorn workers
-exec gunicorn -k uvicorn.workers.UvicornWorker -w $WORKERS -b $HOST:$PORT --log-level $LOG_LEVEL api.main:app
+# Exit immediately if a command exits with a non-zero status.
+set -e
+
+# Start the Celery worker in the background. The '&' is crucial.
+echo "Starting Celery worker in the background..."
+celery -A worker.tasks.celery_app worker --loglevel=info &
+
+# Start the Gunicorn web server in the foreground.
+# This will be the main process for the Render service.
+echo "Starting Gunicorn server..."
+exec gunicorn -k uvicorn.workers.UvicornWorker -w "${WEB_CONCURRENCY:-4}" -b "0.0.0.0:${PORT}" --log-level "${LOG_LEVEL:-info}" api.main:app
