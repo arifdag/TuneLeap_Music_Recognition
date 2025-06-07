@@ -1,5 +1,4 @@
 ﻿from celery import Celery
-import ssl
 import os
 
 # Fingerprint task imports
@@ -23,29 +22,26 @@ from core.repository.song_repository import SongRepository
 # Get Redis URL from environment variable
 REDIS_URL = os.getenv("CELERY_BROKER_URL")
 
-celery_config = {
-    "broker_url": REDIS_URL,
-    "result_backend": REDIS_URL,
-    "broker_connection_retry_on_startup": True,
-    "task_ignore_result": True,
-    "broker_transport_options": {
-        'brpop_timeout': 30,
-    }
-}
-
-# Force SSL/TLS for Upstash
-# Force SSL/TLS for Upstash with the correct settings
 if REDIS_URL and "upstash.io" in REDIS_URL:
-    # Use the correct constant from the ssl module
-    celery_config["broker_use_ssl"] = {
-        'ssl_cert_reqs': ssl.CERT_REQUIRED
-    }
-    # Ensure the URL uses the rediss protocol
-    if celery_config["broker_url"].startswith("redis://"):
-        celery_config["broker_url"] = celery_config["broker_url"].replace("redis://", "rediss://", 1)
+    celery_app = Celery(
+        "worker",
+        broker_url=REDIS_URL.replace("redis://", "rediss://"),
+        result_backend=REDIS_URL.replace("redis://", "rediss://"),
+    )
+else:
+    # This is the fallback for local development
+    celery_app = Celery(
+        "worker",
+        broker=REDIS_URL or "redis://localhost:6379/0",
+        result_backend=REDIS_URL or "redis://localhost:6379/0"
+    )
 
-celery_app = Celery("worker")
-celery_app.conf.update(**celery_config)
+# --- Set common configurations for both environments ---
+celery_app.conf.broker_connection_retry_on_startup = True
+celery_app.conf.task_ignore_result = True
+celery_app.conf.broker_transport_options = {
+    'brpop_timeout': 30,
+}
 
 
 # --- Task Definitions ---
