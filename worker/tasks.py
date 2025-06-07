@@ -16,7 +16,20 @@ from core.noise.reducer import reduce_noise_array
 # Get Redis URL from environment variable, default to localhost if not set
 REDIS_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
 
-celery_app = Celery("worker", broker=REDIS_URL) # Use the variable
+# Check if the URL is from Upstash and requires SSL
+if REDIS_URL and "upstash.io" in REDIS_URL:
+    # Use rediss:// for SSL connections and set broker options
+    celery_app = Celery(
+        "worker",
+        broker_url=REDIS_URL.replace("redis://", "rediss://"), # Use rediss for SSL
+        broker_transport_options={
+            'visibility_timeout': 3600,  # 1 hour
+            'broker_connection_retry_on_startup': True
+        }
+    )
+else:
+    # Fallback for local development (non-SSL)
+    celery_app = Celery("worker", broker=REDIS_URL or "redis://localhost:6379/0")
 
 
 @celery_app.task(name="store_fingerprint")
