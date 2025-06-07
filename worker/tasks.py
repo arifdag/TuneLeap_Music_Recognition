@@ -1,10 +1,10 @@
 ﻿from celery import Celery
-import os # Import os
+import os
 
 # Fingerprint task imports
 from core.fingerprint.extractor import extract_fingerprint
 from core.repository.fingerprint_repository import FingerprintRepository
-from core.reco.features import extract_features # Assuming this is the correct feature extraction function
+from core.reco.features import extract_features
 from core.repository.song_feature_repository import SongFeatureRepository
 import numpy as np
 
@@ -13,23 +13,77 @@ import librosa
 import soundfile as sf
 from core.noise.reducer import reduce_noise_array
 
-# Get Redis URL from environment variable, default to localhost if not set
-REDIS_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+# --- Database Imports for recognize_audio_task ---
+# This task needs its own database connection.
+from db.sql.database import get_db
+from core.repository.song_repository import SongRepository
 
-# Check if the URL is from Upstash and requires SSL
+# --- Celery App Configuration ---
+# Get Redis URL from environment variable
+REDIS_URL = os.getenv("CELERY_BROKER_URL")
+
+celery_config = {
+    "broker_url": REDIS_URL,
+    "result_backend": REDIS_URL,
+    "broker_connection_retry_on_startup": True,
+    "task_ignore_result": True,
+    "broker_transport_options": {
+        'brpop_timeout': 30,
+    }
+}
+
+# Force SSL/TLS for Upstash
 if REDIS_URL and "upstash.io" in REDIS_URL:
-    # Use rediss:// for SSL connections and set broker options
-    celery_app = Celery(
-        "worker",
-        broker_url=REDIS_URL.replace("redis://", "rediss://"), # Use rediss for SSL
-        broker_transport_options={
-            'visibility_timeout': 3600,  # 1 hour
-            'broker_connection_retry_on_startup': True
-        }
-    )
-else:
-    # Fallback for local development (non-SSL)
-    celery_app = Celery("worker", broker=REDIS_URL or "redis://localhost:6379/0")
+    celery_config["broker_use_ssl"] = {'ssl_cert_reqs': 'required'}
+    if celery_config["broker_url"].startswith("redis://"):
+        celery_config["broker_url"] = celery_config["broker_url"].replace("redis://", "rediss://", 1)
+
+celery_app = Celery("worker")
+celery_app.conf.update(**celery_config)
+
+
+# --- Task Definitions ---
+
+@celery_app.task(name="recognize_audio_task", ignore_result=False)
+def recognize_audio_task(path: str):
+    """
+    This is the main asynchronous task for audio recognition.
+    """
+    from core.fingerprint.matcher import FingerprintMatcher
+
+    try:
+        fp_hash = extract_fingerprint(path)
+        matcher = FingerprintMatcher()
+        match_counts = matcher.match(fp_hash)
+    except Exception:
+        match_counts = {}
+    finally:
+        if os.path.exists(path):
+            os.remove(path)
+
+    if not match_counts:
+        return {"status": "NO_MATCH"}
+
+    total = sum(match_counts.values())
+    results = []
+
+    # We create a new DB session for this background task
+    db = next(get_db())
+    try:
+        song_repo = SongRepository(db)
+        for song_id, count in match_counts.items():
+            prob = count / total
+            item = {"song_id": song_id, "probability": prob}
+            song = song_repo.get_by_id(song_id)
+            if song:
+                item["title"] = song.title
+                item["artist_id"] = song.artist_id
+                item["album_id"] = song.album_id
+            results.append(item)
+    finally:
+        db.close()
+
+    return {"status": "SUCCESS", "results": results}
 
 
 @celery_app.task(name="store_fingerprint")
@@ -48,14 +102,12 @@ def reduce_noise(file_path: str) -> str:
     """
     Celery task: load an audio file, reduce its noise, write new file, and return its path.
     """
-    # load file
     y, sr = librosa.load(file_path, sr=None, mono=True)
-    # denoise
     y_denoised = reduce_noise_array(y, sr)
-    # write out
     out_path = file_path.replace(".wav", "_denoised.wav")
     sf.write(out_path, y_denoised, sr)
     return out_path
+
 
 @celery_app.task(name="extract_and_store_features")
 def extract_and_store_features_task(file_path: str, song_id: int):
@@ -63,19 +115,12 @@ def extract_and_store_features_task(file_path: str, song_id: int):
     Extracts audio features for a song and stores them in MongoDB.
     """
     try:
-        # Note: extract_features might take sr as an argument
-        # y, sr_audio = librosa.load(file_path, sr=None, mono=True) # Load to get sr if needed
-        # feature_vector = extract_features(file_path, sr=sr_audio) # Pass sr if function needs it
-        feature_vector = extract_features(file_path) # Or if it handles sr internally
-
+        feature_vector = extract_features(file_path)
         if isinstance(feature_vector, np.ndarray):
             repo = SongFeatureRepository()
             repo.create_or_update(song_id=song_id, feature_vector=feature_vector)
             return f"Features stored for song_id {song_id}"
         else:
-            # Log an error or raise an exception
             return f"Failed to extract features for song_id {song_id}: Not a numpy array"
     except Exception as e:
-        # Log error: print(f"Error extracting/storing features for {song_id}: {e}")
-        # Optionally re-raise or handle
         return f"Error processing song_id {song_id}: {str(e)}"

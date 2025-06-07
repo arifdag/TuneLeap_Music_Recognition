@@ -1,52 +1,44 @@
-﻿from fastapi import APIRouter, UploadFile, Depends, HTTPException
-from sqlalchemy.orm import Session
-import os
+﻿from fastapi import APIRouter, UploadFile, Depends, HTTPException, status
 
 from core.io.recording import save_temp
-from core.fingerprint.extractor import extract_fingerprint
-from core.fingerprint.matcher import FingerprintMatcher
-from core.repository.song_repository import SongRepository
-from db.sql.database import get_db  # your DB session dependency
+from worker.tasks import celery_app, recognize_audio_task
+from celery.result import AsyncResult
 
 router = APIRouter(prefix="/recognize", tags=["recognition"])
 
-@router.post("/")
-async def recognize_audio(file: UploadFile, db: Session = Depends(get_db)):
+@router.post("/", status_code=status.HTTP_202_ACCEPTED)
+async def start_recognition(file: UploadFile):
     """
-    Recognize an uploaded audio file and return matching song(s) with probabilities.
+    Accepts an audio file and starts the recognition process in the background.
     """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided.")
+
     tmp_dir = "tmp"
     path = save_temp(file, dir=tmp_dir)
 
-    try:
-        try:
-            fp_hash = extract_fingerprint(path)
-            matcher = FingerprintMatcher()
-            match_counts = matcher.match(fp_hash)
-        except Exception:
-            # on any extraction error, treat as “no match”
-            match_counts = {}
-    finally:
-        if os.path.exists(path):
-            os.remove(path)
+    # Dispatch the task to the Celery worker
+    task = recognize_audio_task.delay(path)
 
-    if not match_counts:
-        raise HTTPException(status_code=404, detail="No match found")
+    return {"task_id": task.id}
 
-    total = sum(match_counts.values())
-    results = []
-    for song_id, count in match_counts.items():
-        prob = count / total
-        item = {"song_id": song_id, "probability": prob}
-        try:
-            # if the SQL lookup works, add metadata; otherwise just swallow the error
-            song = SongRepository(db).get_by_id(song_id)
-            if song:
-                item["title"] = song.title
-                item["artist_id"] = song.artist_id
-                item["album_id"] = song.album_id
-        except Exception:
-            pass
-        results.append(item)
 
-    return {"results": results}
+@router.get("/result/{task_id}")
+def get_recognition_result(task_id: str):
+    """
+    Fetches the result of a recognition task.
+    """
+    task_result = AsyncResult(task_id, app=celery_app)
+
+    if task_result.state == 'PENDING':
+        return {"status": "PENDING"}
+    elif task_result.state == 'FAILURE':
+        return {"status": "FAILURE", "error": str(task_result.info)}
+
+    # Task is ready, return the result
+    result = task_result.get()
+
+    if result.get("status") == "NO_MATCH":
+        raise HTTPException(status_code=404, detail="No match found.")
+
+    return result
