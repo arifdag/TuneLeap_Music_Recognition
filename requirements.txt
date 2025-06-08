@@ -25,7 +25,7 @@ soundfile
 # Security & Authentication
 python-jose[cryptography]
 PyJWT
-passlib[bcrypt]
-bcrypt
+passlib[bcrypt]==1.7.4
+bcrypt==3.2.0
 email-validator
 pydantic[email]
