@@ -1,8 +1,9 @@
 ﻿from celery import Celery
 import os
+from typing import List, Tuple, Dict
 
 # Fingerprint task imports
-from core.fingerprint.extractor import extract_fingerprint, extract_robust_fingerprint
+from core.fingerprint.extractor import extract_fingerprint
 from core.repository.fingerprint_repository import FingerprintRepository
 from core.fingerprint.matcher import FingerprintMatcher
 from core.fingerprint.threshold import HybridMatchStrategy
@@ -19,6 +20,8 @@ from core.noise.reducer import reduce_noise_array
 # This task needs its own database connection.
 from db.sql.database import get_db
 from core.repository.song_repository import SongRepository
+from core.repository.album_repository import AlbumRepository
+from core.repository.artist_repository import ArtistRepository
 
 # --- Celery App Configuration ---
 # Get Redis URL from environment variable
@@ -73,58 +76,154 @@ celery_app.conf.result_expires = 3600  # Results expire after 1 hour
 @celery_app.task(name="recognize_audio_task", ignore_result=False)
 def recognize_audio_task(path: str):
     """
-    Extract features from an audio file and return matching songs.
-    Uses robust fingerprinting for optimal partial song recognition.
+    Extract fingerprints from an audio file and return matching songs.
+    Uses Shazam-style spectral peak fingerprinting for robust recognition.
     """
     import traceback
-    from core.fingerprint.matcher import FingerprintMatcher
-    from core.fingerprint.threshold import HybridMatchStrategy
+    from core.fingerprint.extractor import extract_fingerprint
+    from core.repository.fingerprint_repository import FingerprintRepository
     from mongoengine import connect
     from dotenv import load_dotenv
-    
+
     # Ensure MongoDB connection in worker process
     load_dotenv()
     mongo_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
     db_name = os.getenv("DB_NAME", "tuneleap_db")
     connect(db=db_name, host=mongo_uri, alias="default")
-    
+
     try:
         print(f"Worker: Processing file {path}")
-        
+
         # Check if file exists
         if not os.path.exists(path):
             print(f"Worker: File not found: {path}")
             return {"status": "NO_MATCH", "error": "File not found"}
+
+        # Extract Shazam-style fingerprints
+        print("Worker: Extracting Shazam-style fingerprints...")
+        query_fingerprints = extract_fingerprint(path)
+        print(f"Worker: Extracted {len(query_fingerprints)} fingerprints from query")
+
+        if not query_fingerprints:
+            print("Worker: No fingerprints extracted from query audio")
+            return {"status": "NO_MATCH"}
+
+        # Get stored fingerprints
+        print("Worker: Loading stored fingerprints...")
+        repo = FingerprintRepository()
         
-        print("Worker: Extracting robust fingerprint for partial song support...")
-        # Use robust fingerprinting - works great for partial songs
-        fp_hash = extract_robust_fingerprint(path)
-        print(f"Worker: Generated robust hash: {fp_hash}")
+        # Extract just the hashes from query fingerprints for efficient lookup
+        query_hashes = [fp[0] for fp in query_fingerprints]
+        stored_fingerprints = repo.get_fingerprints_by_hashes(query_hashes)
         
-        # Start with simple exact matching (fast)
-        print("Worker: Searching for exact matches...")
-        exact_matcher = FingerprintMatcher()  # Uses ExactMatchStrategy by default
-        match_counts = exact_matcher.match(fp_hash, query_file_path=path)
+        if not stored_fingerprints:
+            print("Worker: No matching fingerprints found in database")
+            return {"status": "NO_MATCH"}
+
+        # Match fingerprints using time-offset algorithm
+        print("Worker: Matching fingerprints...")
+        song_scores = match_shazam_fingerprints(query_fingerprints, stored_fingerprints)
         
-        # Check if we found exact matches
-        if match_counts:
-            print(f"Worker: Found exact matches: {match_counts}")
-            # Process exact matches using traditional fingerprint counting
-            return _process_fingerprint_matches(match_counts, path)
+        if not song_scores:
+            print("Worker: No matches found")
+            return {"status": "NO_MATCH"}
+
+        # Sort by score and get top matches
+        sorted_matches = sorted(song_scores.items(), key=lambda x: x[1], reverse=True)
+        print(f"Worker: Top matches: {sorted_matches[:5]}")
+
+        # Convert to probabilities
+        total_score = sum(score for _, score in sorted_matches[:10])  # Top 10 for probability calculation
         
-        # No exact matches found, try feature-based similarity matching
-        print("Worker: No exact matches, trying direct feature-based similarity matching...")
-        return _process_similarity_matches(path)
-        
+        results = []
+        db = next(get_db())
+        try:
+            song_repo = SongRepository(db)
+            album_repo = AlbumRepository(db)
+            artist_repo = ArtistRepository(db)
+            
+            for song_id, score in sorted_matches[:5]:  # Return top 5 matches
+                probability = score / total_score if total_score > 0 else 0
+                item = {
+                    "song_id": song_id,
+                    "probability": probability,
+                    "match_score": score
+                }
+                
+                # Get song details
+                song = song_repo.get_by_id(song_id)
+                if song:
+                    item["title"] = song.title
+                    item["artist_id"] = song.artist_id
+                    
+                    # Get artist name
+                    artist = artist_repo.get_by_id(song.artist_id)
+                    if artist:
+                        item["artist_name"] = artist.name
+                    
+                    # Get album details if available
+                    if song.album_id:
+                        album = album_repo.get_by_id(song.album_id)
+                        if album:
+                            item["album_id"] = song.album_id
+                            item["album_name"] = album.title
+                            if album.album_image:
+                                item["album_image"] = album.album_image
+                
+                results.append(item)
+            
+            print(f"Worker: Recognition complete with {len(results)} results")
+            
+        except Exception as e:
+            print(f"Worker: Error getting song details: {e}")
+            return {"status": "ERROR", "error": str(e)}
+        finally:
+            db.close()
+
+        return {"status": "SUCCESS", "results": results}
+
     except Exception as e:
         print(f"Worker: Error during recognition: {e}")
         traceback.print_exc()
         return {"status": "ERROR", "error": str(e)}
     finally:
-        # Clean up file after processing is complete
+        # Clean up file after processing
         if os.path.exists(path):
             print(f"Worker: Cleaning up file {path}")
             os.remove(path)
+
+
+def match_shazam_fingerprints(query_fingerprints: List[Tuple[str, int]], 
+                              stored_fingerprints: Dict[str, List[Tuple[int, int]]]) -> Dict[int, int]:
+    """
+    Match query fingerprints against stored fingerprints using time-offset algorithm.
+    Returns dict of song_id -> match_score.
+    """
+    # Time difference histogram for each song
+    time_diff_counts = {}
+    
+    for query_hash, query_time in query_fingerprints:
+        if query_hash in stored_fingerprints:
+            # This hash matches some stored fingerprints
+            for song_id, stored_time in stored_fingerprints[query_hash]:
+                # Calculate time difference
+                time_diff = stored_time - query_time
+                
+                # Create key for this song and time difference
+                key = (song_id, time_diff)
+                
+                # Increment count
+                if key not in time_diff_counts:
+                    time_diff_counts[key] = 0
+                time_diff_counts[key] += 1
+    
+    # Find the best match for each song
+    song_scores = {}
+    for (song_id, time_diff), count in time_diff_counts.items():
+        if song_id not in song_scores or count > song_scores[song_id]:
+            song_scores[song_id] = count
+    
+    return song_scores
 
 
 def _process_fingerprint_matches(match_counts: dict, path: str):
@@ -136,6 +235,7 @@ def _process_fingerprint_matches(match_counts: dict, path: str):
     db = next(get_db())
     try:
         song_repo = SongRepository(db)
+        album_repo = AlbumRepository(db)
         for song_id, count in match_counts.items():
             prob = count / total
             item = {"song_id": song_id, "probability": prob}
@@ -144,6 +244,13 @@ def _process_fingerprint_matches(match_counts: dict, path: str):
                 item["title"] = song.title
                 item["artist_id"] = song.artist_id
                 item["album_id"] = song.album_id
+                
+                # Get album image if available
+                if song.album_id:
+                    album = album_repo.get_by_id(song.album_id)
+                    if album and album.album_image:
+                        item["album_image"] = album.album_image
+                        
             results.append(item)
         print(f"Worker: Exact match results: {results}")
     except Exception as e:
@@ -156,64 +263,66 @@ def _process_fingerprint_matches(match_counts: dict, path: str):
 
 
 def _process_similarity_matches(path: str):
-    """Process feature-based similarity matches with direct similarity scoring."""
+    """Process feature-based similarity matches with enhanced tolerance for degraded audio."""
     try:
         from core.reco.features import extract_features
         from core.repository.song_feature_repository import SongFeatureRepository
         import numpy as np
-        
+
         print("Worker: Extracting features from query audio...")
         query_features = extract_features(path)
-        
+
         if len(query_features) == 0:
             print("Worker: Could not extract features from query")
             return {"status": "NO_MATCH"}
-        
+
         # Get all stored song features
         feature_repo = SongFeatureRepository()
         all_features = feature_repo.get_all_features()
-        
+
         if not all_features:
             print("Worker: No stored song features found")
             return {"status": "NO_MATCH"}
-        
+
         print(f"Worker: Comparing against {len(all_features)} stored songs")
-        
+
         # Calculate similarities directly
         similarities = []
         for song_id, stored_features in all_features.items():
             similarity = _compute_weighted_cosine_similarity(query_features, stored_features)
             similarities.append((song_id, similarity))
-        
-        # Filter by threshold and sort
-        threshold = 0.5  # Lower threshold to get more candidates
+
+        # Lower threshold for phone-to-PC recognition (was 0.5)
+        threshold = 0.3  # More tolerant of degraded audio
         filtered_similarities = [(sid, sim) for sid, sim in similarities if sim >= threshold]
-        
+
         if not filtered_similarities:
             print(f"Worker: No similarities above threshold {threshold}")
             return {"status": "NO_MATCH"}
-        
-        # Sort by similarity descending and take top 5 for better probability distribution
+
+        # Sort by similarity descending and take top 10 for better results
         filtered_similarities.sort(key=lambda x: x[1], reverse=True)
-        top_similarities = filtered_similarities[:5]
-        
+        top_similarities = filtered_similarities[:10]  # Increased from 5 to 10
+
         print(f"Worker: Top similarities: {[(sid, f'{sim:.3f}') for sid, sim in top_similarities]}")
-        
+
         # Apply softmax to similarity scores for better probability distribution
         sim_scores = np.array([sim for _, sim in top_similarities])
-        
+
         # Temperature to control the sharpness of the probability distribution
         temperature = 0.05  # Lower temperature makes the distribution sharper
-        
+
         # Apply temperature and compute softmax
         sim_scores_temp = sim_scores / temperature
         probabilities = np.exp(sim_scores_temp) / np.sum(np.exp(sim_scores_temp))
-        
+
         results = []
-        
+
         db = next(get_db())
         try:
             song_repo = SongRepository(db)
+            album_repo = AlbumRepository(db)
+            
             for i, (song_id, similarity) in enumerate(top_similarities):
                 prob = probabilities[i]
                 item = {"song_id": song_id, "probability": prob, "similarity": similarity}
@@ -222,18 +331,25 @@ def _process_similarity_matches(path: str):
                     item["title"] = song.title
                     item["artist_id"] = song.artist_id
                     item["album_id"] = song.album_id
+                    
+                    # Get album image if available
+                    if song.album_id:
+                        album = album_repo.get_by_id(song.album_id)
+                        if album and album.album_image:
+                            item["album_image"] = album.album_image
+                            
                 results.append(item)
 
             # Sort results by final probability
             results.sort(key=lambda x: x['probability'], reverse=True)
-            
+
             # Keep only top 1 result after softmax
-            results = results[:1]
+            results = results[:3]
 
             # Format results for logging
             result_summary = [(r['song_id'], f"prob={r['probability']:.3f}", f"sim={r['similarity']:.3f}") for r in results]
             print(f"Worker: Similarity-based results with softmax: {result_summary}")
-            
+
         except Exception as e:
             print(f"Worker: Error processing similarity matches: {e}")
             return {"status": "ERROR", "error": str(e)}
@@ -241,7 +357,7 @@ def _process_similarity_matches(path: str):
             db.close()
 
         return {"status": "SUCCESS", "results": results}
-        
+
     except Exception as e:
         print(f"Worker: Error in similarity matching: {e}")
         return {"status": "ERROR", "error": str(e)}
@@ -249,66 +365,77 @@ def _process_similarity_matches(path: str):
 
 def _compute_weighted_cosine_similarity(features1: np.ndarray, features2: np.ndarray) -> float:
     """
-    Compute weighted cosine similarity optimized for partial song recognition.
+    Compute weighted cosine similarity optimized for phone-to-PC recognition.
+    Adjusted weights to prioritize features that are more robust to noise and degradation.
     """
     if len(features1) == 0 or len(features2) == 0:
         return 0.0
-    
+
     # Ensure same length
     min_len = min(len(features1), len(features2))
     f1 = features1[:min_len]
     f2 = features2[:min_len]
-    
-    # Create feature weights (55 features expected)
+
+    # Create feature weights optimized for degraded audio (55 features expected)
     if min_len >= 55:
         weights = np.concatenate([
-            np.full(12, 2.5),  # Chroma - highest weight for harmony/melody
-            np.full(13, 1.8),  # MFCC mean - high weight for timbre
-            np.full(13, 1.0),  # MFCC std - medium weight
-            np.full(6, 1.2),   # Spectral features - medium-high weight
-            np.full(7, 1.5),   # Spectral contrast - medium-high weight
-            np.full(2, 0.5),   # Rhythm - lower weight for short clips
-            np.full(2, 0.4)    # ZCR - lowest weight
+            np.full(12, 3.0),  # Chroma - highest weight (very robust to noise)
+            np.full(13, 1.5),  # MFCC mean - medium weight (somewhat affected by noise)
+            np.full(13, 0.8),  # MFCC std - lower weight (highly affected by noise)
+            np.full(6, 1.0),   # Spectral features - medium weight
+            np.full(7, 2.0),   # Spectral contrast - high weight (robust to noise)
+            np.full(2, 0.3),   # Rhythm - very low weight (unreliable with noise)
+            np.full(2, 0.2)    # ZCR - lowest weight (very noise-sensitive)
         ])
     else:
         # Fallback for different feature lengths
         weights = np.ones(min_len)
-    
+
     weights = weights[:min_len]
-    
+
     # Apply weights and normalize
     f1_weighted = f1 * weights
     f2_weighted = f2 * weights
-    
+
     norm1 = np.linalg.norm(f1_weighted)
     norm2 = np.linalg.norm(f2_weighted)
-    
+
     if norm1 == 0 or norm2 == 0:
         return 0.0
-    
+
     return float(np.dot(f1_weighted, f2_weighted) / (norm1 * norm2))
 
 
 @celery_app.task(name="store_fingerprint")
 def store_fingerprint(file_path: str, song_id: int) -> str:
     """
-    Extract robust fingerprint and save to MongoDB.
-    Updated to use robust fingerprinting for better partial song recognition.
+    Extract and store Shazam-style fingerprints for a song.
+    Now uses Shazam algorithm for better partial song recognition.
     """
     from mongoengine import connect
     from dotenv import load_dotenv
-    
+
     # Ensure MongoDB connection in worker process
     load_dotenv()
     mongo_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
     db_name = os.getenv("DB_NAME", "tuneleap_db")
     connect(db=db_name, host=mongo_uri, alias="default")
-    
-    # Use robust fingerprinting for better matching capabilities
-    fp_hash = extract_robust_fingerprint(file_path)
-    repo = FingerprintRepository()
-    fp = repo.create(song_id=song_id, hash=fp_hash)
-    return str(fp.id)
+
+    try:
+        # Extract Shazam-style fingerprints
+        fingerprints = extract_fingerprint(file_path)
+        
+        if not fingerprints:
+            return f"No fingerprints extracted for song_id {song_id}"
+        
+        # Store fingerprints
+        repo = FingerprintRepository()
+        count = repo.store_shazam_fingerprints(song_id, fingerprints)
+        
+        return f"Stored {count} Shazam fingerprints for song_id {song_id}"
+        
+    except Exception as e:
+        return f"Error processing song_id {song_id}: {str(e)}"
 
 
 @celery_app.task(name="reduce_noise")
@@ -330,13 +457,13 @@ def extract_and_store_features_task(file_path: str, song_id: int):
     """
     from mongoengine import connect
     from dotenv import load_dotenv
-    
+
     # Ensure MongoDB connection in worker process
     load_dotenv()
     mongo_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
     db_name = os.getenv("DB_NAME", "tuneleap_db")
     connect(db=db_name, host=mongo_uri, alias="default")
-    
+
     try:
         feature_vector = extract_features(file_path)
         if isinstance(feature_vector, np.ndarray):

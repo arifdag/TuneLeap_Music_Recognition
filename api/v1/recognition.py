@@ -1,4 +1,5 @@
 ﻿from fastapi import APIRouter, UploadFile, Depends, HTTPException, status
+from typing import Dict, List, Any, Optional
 
 from core.io.recording import save_temp
 from worker.tasks import celery_app, recognize_audio_task
@@ -27,6 +28,17 @@ async def start_recognition(file: UploadFile):
 def get_recognition_result(task_id: str):
     """
     Fetches the result of a recognition task.
+    
+    Returns:
+        dict: Contains status and results fields. Each result item includes:
+            - song_id: The ID of the matched song
+            - probability: Match confidence score
+            - title: Song title
+            - artist_id: ID of the artist
+            - artist_name: Name of the artist
+            - album_id: ID of the album (if available)
+            - album_name: Name of the album (if available)
+            - album_image: URL or path to album image (if available)
     """
     task_result = AsyncResult(task_id, app=celery_app)
 

@@ -13,6 +13,7 @@ class AlbumBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     release_date: Optional[datetime] = None
     artist_id: int
+    album_image: Optional[str] = None
 
 class AlbumCreate(AlbumBase):
     pass
@@ -25,6 +26,7 @@ class AlbumResponse(BaseModel):
     title: str
     release_date: Optional[datetime] = None
     artist_id: int
+    album_image: Optional[str] = None
     # songs: List['SongResponse'] = Field(default_factory=list) # If nesting
     model_config = ConfigDict(from_attributes=True)
 

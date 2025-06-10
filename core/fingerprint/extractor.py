@@ -1,116 +1,186 @@
 ﻿import numpy as np
 import librosa
 import hashlib
-from typing import List
+from scipy.ndimage import maximum_filter
+from typing import List, Tuple, Set
+import struct
 
-def extract_fingerprint(file_path: str, sr: int = 22050) -> str:
-    """
-    Loads an audio file and extracts a fingerprint by computing MFCC means
-    and hashing them.
 
-    :param file_path: Path to the audio file
-    :param sr: Sampling rate to use when loading
-    :return: Hexadecimal SHA-256 hash string representing the fingerprint
+class FingerPrinter:
     """
-    # load as mono
-    y, _ = librosa.load(file_path, sr=sr, mono=True)
-    # compute MFCCs
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20)
-    # mean across time frames
-    mfcc_mean = np.mean(mfcc, axis=1)
-    # quantize to reduce small variations
-    quantized = np.round(mfcc_mean, 2)
-    # hash the bytes
-    return hashlib.sha256(quantized.tobytes()).hexdigest()
+    Implements Shazam-like audio fingerprinting using spectral peaks.
+    This creates multiple hashes per song that can match partial audio.
+    """
 
-def extract_fingerprint_windows(file_path: str, sr: int = 22050, 
-                               window_duration: float = 10.0, 
-                               hop_duration: float = 5.0) -> List[str]:
-    """
-    Extract multiple fingerprints from overlapping windows of an audio file.
-    This allows matching partial songs by creating fingerprints for different segments.
-    
-    :param file_path: Path to the audio file
-    :param sr: Sampling rate to use when loading
-    :param window_duration: Duration of each window in seconds
-    :param hop_duration: Hop size between windows in seconds
-    :return: List of hexadecimal SHA-256 hash strings representing fingerprints
-    """
-    # load as mono
-    y, _ = librosa.load(file_path, sr=sr, mono=True)
-    
-    # Calculate window and hop sizes in samples
-    window_samples = int(window_duration * sr)
-    hop_samples = int(hop_duration * sr)
-    
-    fingerprints = []
-    
-    # Extract windows
-    for start in range(0, len(y) - window_samples + 1, hop_samples):
-        end = start + window_samples
-        window_audio = y[start:end]
-        
-        # Skip if window is too short
-        if len(window_audio) < window_samples * 0.8:  # At least 80% of expected length
-            continue
-            
-        # compute MFCCs for this window
-        mfcc = librosa.feature.mfcc(y=window_audio, sr=sr, n_mfcc=20)
-        # mean across time frames
-        mfcc_mean = np.mean(mfcc, axis=1)
-        # quantize to reduce small variations
-        quantized = np.round(mfcc_mean, 2)
-        # hash the bytes
-        fp_hash = hashlib.sha256(quantized.tobytes()).hexdigest()
-        fingerprints.append(fp_hash)
-    
-    return fingerprints
+    # Fingerprinting parameters
+    SAMPLE_RATE = 22050
+    FFT_WINDOW_SIZE = 4096  # ~0.2 seconds
+    OVERLAP_RATIO = 0.5
 
-def extract_robust_fingerprint(file_path: str, sr: int = 22050) -> str:
+    # Peak detection parameters
+    PEAK_NEIGHBORHOOD_SIZE = 20  # Size of local maxima filter
+    MIN_PEAK_AMPLITUDE = 0.01  # Minimum amplitude for a peak
+
+    # Fingerprint parameters
+    MAX_HASH_TIME_DELTA = 200  # Maximum time difference between peaks (in frames)
+    MIN_HASH_TIME_DELTA = 0  # Minimum time difference
+    FINGERPRINT_REDUCTION = 20  # Reduce number of fingerprints by this factor
+
+    # Target zone for pairing peaks
+    TARGET_ZONE_START = 5  # Start pairing after 5 frames
+    TARGET_ZONE_WIDTH = 100  # Look up to 100 frames ahead
+    MAX_PAIRS_PER_PEAK = 3  # Maximum number of pairs per peak
+
+    def __init__(self):
+        self.hop_length = int(self.FFT_WINDOW_SIZE * (1 - self.OVERLAP_RATIO))
+
+    def extract_fingerprints(self, file_path: str) -> List[Tuple[str, int]]:
+        """
+        Extract Shazam-like fingerprints from an audio file.
+        Returns list of (hash, time_offset) tuples.
+        """
+        # Load audio
+        y, sr = librosa.load(file_path, sr=self.SAMPLE_RATE, mono=True)
+
+        # Compute spectrogram
+        spectrogram = self._compute_spectrogram(y)
+
+        # Find spectral peaks
+        peaks = self._find_peaks(spectrogram)
+
+        # Generate fingerprints from peak pairs
+        fingerprints = self._generate_fingerprints(peaks)
+
+        return fingerprints
+
+    def _compute_spectrogram(self, audio: np.ndarray) -> np.ndarray:
+        """Compute the magnitude spectrogram of the audio."""
+        # Use STFT to get spectrogram
+        D = librosa.stft(
+            audio,
+            n_fft=self.FFT_WINDOW_SIZE,
+            hop_length=self.hop_length,
+            window='hann'
+        )
+
+        # Convert to magnitude and apply log scaling
+        magnitude = np.abs(D)
+
+        # Apply log scaling to better capture quieter frequencies
+        log_magnitude = np.log1p(magnitude)
+
+        return log_magnitude
+
+    def _find_peaks(self, spectrogram: np.ndarray) -> List[Tuple[int, int]]:
+        """
+        Find local maxima (peaks) in the spectrogram.
+        Returns list of (frequency_bin, time_frame) tuples.
+        """
+        # Apply local maximum filter
+        neighborhood_size = (self.PEAK_NEIGHBORHOOD_SIZE, self.PEAK_NEIGHBORHOOD_SIZE)
+        local_max = maximum_filter(spectrogram, neighborhood_size, mode='constant')
+
+        # Find peaks: points that are local maxima and above threshold
+        is_peak = (spectrogram == local_max) & (spectrogram > self.MIN_PEAK_AMPLITUDE)
+
+        # Get peak coordinates
+        freq_indices, time_indices = np.where(is_peak)
+
+        # Create list of peaks with their amplitudes
+        peaks_with_amplitude = []
+        for f, t in zip(freq_indices, time_indices):
+            amplitude = spectrogram[f, t]
+            peaks_with_amplitude.append((f, t, amplitude))
+
+        # Sort by amplitude and keep strongest peaks
+        peaks_with_amplitude.sort(key=lambda x: x[2], reverse=True)
+        max_peaks = len(peaks_with_amplitude) // self.FINGERPRINT_REDUCTION
+        peaks_with_amplitude = peaks_with_amplitude[:max_peaks]
+
+        # Return just the coordinates
+        peaks = [(f, t) for f, t, _ in peaks_with_amplitude]
+
+        return peaks
+
+    def _generate_fingerprints(self, peaks: List[Tuple[int, int]]) -> List[Tuple[str, int]]:
+        """
+        Generate fingerprints by pairing peaks within target zones.
+        Each fingerprint is a hash of two peaks and the time delta between them.
+        """
+        # Sort peaks by time
+        peaks.sort(key=lambda x: x[1])
+
+        fingerprints = []
+
+        for i, (f1, t1) in enumerate(peaks):
+            # Look for peaks in the target zone
+            pairs_found = 0
+
+            for j in range(i + 1, len(peaks)):
+                f2, t2 = peaks[j]
+
+                # Calculate time difference
+                time_delta = t2 - t1
+
+                # Check if peak is in target zone
+                if time_delta < self.TARGET_ZONE_START:
+                    continue
+                if time_delta > self.TARGET_ZONE_START + self.TARGET_ZONE_WIDTH:
+                    break
+
+                # Create hash from the two frequencies and time delta
+                # Hash format: freq1:freq2:time_delta
+                hash_input = f"{f1}:{f2}:{time_delta}"
+                hash_value = hashlib.md5(hash_input.encode()).hexdigest()[:16]
+
+                # Store with time offset of first peak
+                fingerprints.append((hash_value, t1))
+
+                pairs_found += 1
+                if pairs_found >= self.MAX_PAIRS_PER_PEAK:
+                    break
+
+        return fingerprints
+
+    def match_fingerprints(self, query_fingerprints: List[Tuple[str, int]],
+                           stored_fingerprints: dict) -> dict:
+        """
+        Match query fingerprints against stored fingerprints.
+        Returns dict of song_id -> match_score.
+
+        stored_fingerprints format: {hash: [(song_id, time_offset), ...]}
+        """
+        # Time difference histogram for each song
+        time_diff_counts = {}
+
+        for query_hash, query_time in query_fingerprints:
+            if query_hash in stored_fingerprints:
+                # This hash matches some stored fingerprints
+                for song_id, stored_time in stored_fingerprints[query_hash]:
+                    # Calculate time difference
+                    time_diff = stored_time - query_time
+
+                    # Create key for this song and time difference
+                    key = (song_id, time_diff)
+
+                    # Increment count
+                    if key not in time_diff_counts:
+                        time_diff_counts[key] = 0
+                    time_diff_counts[key] += 1
+
+        # Find the best match for each song
+        song_scores = {}
+        for (song_id, time_diff), count in time_diff_counts.items():
+            if song_id not in song_scores or count > song_scores[song_id]:
+                song_scores[song_id] = count
+
+        return song_scores
+
+def extract_fingerprint(file_path: str) -> List[Tuple[str, int]]:
     """
-    Extract a more robust fingerprint that works better with partial songs.
-    Uses spectral centroid and other features that are less sensitive to duration.
-    
-    :param file_path: Path to the audio file
-    :param sr: Sampling rate to use when loading
-    :return: Hexadecimal SHA-256 hash string representing the fingerprint
+    Extract Shazam-like fingerprints from an audio file.
+    Wrapper function that creates a FingerPrinter instance and extracts fingerprints.
+    Returns list of (hash, time_offset) tuples.
     """
-    # load as mono
-    y, _ = librosa.load(file_path, sr=sr, mono=True)
-    
-    # Extract multiple features that are more robust
-    features = []
-    
-    # MFCCs (but use percentiles instead of just mean)
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-    mfcc_percentiles = np.percentile(mfcc, [25, 50, 75], axis=1).flatten()
-    features.extend(mfcc_percentiles.tolist())
-    
-    # Spectral centroid
-    spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
-    features.append(float(np.mean(spectral_centroid)))
-    features.append(float(np.std(spectral_centroid)))
-    
-    # Spectral rolloff
-    spectral_rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr)
-    features.append(float(np.mean(spectral_rolloff)))
-    features.append(float(np.std(spectral_rolloff)))
-    
-    # Zero crossing rate
-    zcr = librosa.feature.zero_crossing_rate(y)
-    features.append(float(np.mean(zcr)))
-    features.append(float(np.std(zcr)))
-    
-    # Tempo (if audio is long enough)
-    if len(y) > sr * 3:  # At least 3 seconds
-        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-        features.append(float(tempo))
-    else:
-        features.append(0.0)  # Default value for short clips
-    
-    # Convert to numpy array and quantize
-    features_array = np.array(features, dtype=float)
-    quantized = np.round(features_array, 2)
-    
-    # hash the bytes
-    return hashlib.sha256(quantized.tobytes()).hexdigest()
+    fingerprinter = FingerPrinter()
+    return fingerprinter.extract_fingerprints(file_path)

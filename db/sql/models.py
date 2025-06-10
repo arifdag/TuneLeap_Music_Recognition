@@ -22,6 +22,7 @@ class Album(Base):
     title = Column(String(255), nullable=False)
     release_date = Column(DateTime, nullable=True)
     artist_id = Column(Integer, ForeignKey("artists.id"), nullable=False)
+    album_image = Column(String(1024), nullable=True)  # URL to album image or path
 
     # Relationship: an album belongs to one artist
     artist = relationship("Artist", back_populates="albums")
