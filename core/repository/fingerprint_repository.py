@@ -50,10 +50,9 @@ class FingerprintRepository:
         Fingerprint.objects.insert(fps)
         return fps
 
-    # Shazam-style methods
-    def store_shazam_fingerprints(self, song_id: int, fingerprints: List[Tuple[str, int]]) -> int:
+    def store_spectral_fingerprints(self, song_id: int, fingerprints: List[Tuple[str, int]]) -> int:
         """
-        Store multiple Shazam-style fingerprints for a song.
+        Store multiple SpectralMatch fingerprints for a song.
         Each fingerprint is a (hash, time_offset) tuple.
         Returns the number of fingerprints stored.
         """

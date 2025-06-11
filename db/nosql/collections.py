@@ -8,7 +8,7 @@ class Fingerprint(Document):
             "hash",  # fast query by fingerprint hash
             "song_id",  # query by song identifier
             {"fields": ["hash", "song_id"], "unique": False},
-            ("hash", "time_offset")  # For efficient Shazam-style lookups
+            ("hash", "time_offset")
         ]
     }
 
@@ -16,7 +16,7 @@ class Fingerprint(Document):
     song_id = IntField(required=True)
     # Hash string representing the audio fingerprint
     hash = StringField(required=True)
-    # Time offset in frames (for Shazam-style matching)
+    # Time offset in frames (for SpectralMatch matching)
     time_offset = IntField(default=0)
     # Timestamp when this fingerprint document was created
     created_at = DateTimeField(default=datetime.utcnow)

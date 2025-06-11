@@ -77,7 +77,7 @@ celery_app.conf.result_expires = 3600  # Results expire after 1 hour
 def recognize_audio_task(path: str):
     """
     Extract fingerprints from an audio file and return matching songs.
-    Uses Shazam-style spectral peak fingerprinting for robust recognition.
+    Uses SpectralMatch spectral peak fingerprinting for robust recognition.
     """
     import traceback
     from core.fingerprint.extractor import extract_fingerprint
@@ -99,8 +99,8 @@ def recognize_audio_task(path: str):
             print(f"Worker: File not found: {path}")
             return {"status": "NO_MATCH", "error": "File not found"}
 
-        # Extract Shazam-style fingerprints
-        print("Worker: Extracting Shazam-style fingerprints...")
+        # Extract SpectralMatch fingerprints
+        print("Worker: Extracting SpectralMatch fingerprints...")
         query_fingerprints = extract_fingerprint(path)
         print(f"Worker: Extracted {len(query_fingerprints)} fingerprints from query")
 
@@ -122,7 +122,7 @@ def recognize_audio_task(path: str):
 
         # Match fingerprints using time-offset algorithm
         print("Worker: Matching fingerprints...")
-        song_scores = match_shazam_fingerprints(query_fingerprints, stored_fingerprints)
+        song_scores = match_spectral_fingerprints(query_fingerprints, stored_fingerprints)
         
         if not song_scores:
             print("Worker: No matches found")
@@ -193,7 +193,7 @@ def recognize_audio_task(path: str):
             os.remove(path)
 
 
-def match_shazam_fingerprints(query_fingerprints: List[Tuple[str, int]], 
+def match_spectral_fingerprints(query_fingerprints: List[Tuple[str, int]], 
                               stored_fingerprints: Dict[str, List[Tuple[int, int]]]) -> Dict[int, int]:
     """
     Match query fingerprints against stored fingerprints using time-offset algorithm.
@@ -409,8 +409,8 @@ def _compute_weighted_cosine_similarity(features1: np.ndarray, features2: np.nda
 @celery_app.task(name="store_fingerprint")
 def store_fingerprint(file_path: str, song_id: int) -> str:
     """
-    Extract and store Shazam-style fingerprints for a song.
-    Now uses Shazam algorithm for better partial song recognition.
+    Extract and store SpectralMatch fingerprints for a song.
+    Now uses SpectralMatch algorithm for better partial song recognition.
     """
     from mongoengine import connect
     from dotenv import load_dotenv
@@ -422,7 +422,7 @@ def store_fingerprint(file_path: str, song_id: int) -> str:
     connect(db=db_name, host=mongo_uri, alias="default")
 
     try:
-        # Extract Shazam-style fingerprints
+        # Extract SpectralMatch fingerprints
         fingerprints = extract_fingerprint(file_path)
         
         if not fingerprints:
@@ -430,9 +430,9 @@ def store_fingerprint(file_path: str, song_id: int) -> str:
         
         # Store fingerprints
         repo = FingerprintRepository()
-        count = repo.store_shazam_fingerprints(song_id, fingerprints)
+        count = repo.store_spectral_fingerprints(song_id, fingerprints)
         
-        return f"Stored {count} Shazam fingerprints for song_id {song_id}"
+        return f"Stored {count} SpectralMatch fingerprints for song_id {song_id}"
         
     except Exception as e:
         return f"Error processing song_id {song_id}: {str(e)}"

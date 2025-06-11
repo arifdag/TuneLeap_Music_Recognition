@@ -8,7 +8,7 @@ import struct
 
 class FingerPrinter:
     """
-    Implements Shazam-like audio fingerprinting using spectral peaks.
+    Implements SpectralMatch audio fingerprinting using spectral peaks.
     This creates multiple hashes per song that can match partial audio.
     """
 
@@ -36,7 +36,7 @@ class FingerPrinter:
 
     def extract_fingerprints(self, file_path: str) -> List[Tuple[str, int]]:
         """
-        Extract Shazam-like fingerprints from an audio file.
+        Extract SpectralMatch fingerprints from an audio file.
         Returns list of (hash, time_offset) tuples.
         """
         # Load audio
@@ -178,7 +178,7 @@ class FingerPrinter:
 
 def extract_fingerprint(file_path: str) -> List[Tuple[str, int]]:
     """
-    Extract Shazam-like fingerprints from an audio file.
+    Extract SpectralMatch fingerprints from an audio file.
     Wrapper function that creates a FingerPrinter instance and extracts fingerprints.
     Returns list of (hash, time_offset) tuples.
     """
