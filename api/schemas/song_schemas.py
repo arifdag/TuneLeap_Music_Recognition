@@ -20,4 +20,6 @@ class SongUpdate(SongBase): # If you ever need to update songs via API
 
 class SongResponse(SongBase):
     id: int
+    artist_name: Optional[str] = None
+    album_image: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)

@@ -1,6 +1,6 @@
-﻿from sqlalchemy.orm import Session
+﻿from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
-from db.sql.models import RecognitionHistory, Song
+from db.sql.models import RecognitionHistory, Song, Artist, Album
 from api.schemas.history_schemas import RecognitionHistoryCreate
 
 class RecognitionHistoryRepository:
@@ -31,6 +31,12 @@ class RecognitionHistoryRepository:
         return (
             self.session.query(RecognitionHistory)
             .filter(RecognitionHistory.user_id == user_id)
+            .options(
+                joinedload(RecognitionHistory.song)
+                .joinedload(Song.artist),
+                joinedload(RecognitionHistory.song)
+                .joinedload(Song.album)
+            )
             .order_by(RecognitionHistory.recognized_at.desc(), RecognitionHistory.id.desc())
             .offset(skip)
             .limit(limit)
@@ -41,6 +47,12 @@ class RecognitionHistoryRepository:
         return (
             self.session.query(RecognitionHistory)
             .filter(RecognitionHistory.id == event_id, RecognitionHistory.user_id == user_id)
+            .options(
+                joinedload(RecognitionHistory.song)
+                .joinedload(Song.artist),
+                joinedload(RecognitionHistory.song)
+                .joinedload(Song.album)
+            )
             .first()
         )
 
