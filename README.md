@@ -1,122 +1,276 @@
-# TuneLeap - Müzik Tanıma
+## Table of Contents
 
-Bu proje, ses dosyalarından müzik tanımak, şarkı tavsiyeleri sunmak ve kullanıcıların çalma listelerini yönetmek için geliştirilmiş kapsamlı bir API hizmetidir. Proje, ses parmak izi (audio fingerprinting) ve makine öğrenmesi tekniklerini kullanarak yüksek doğrulukla müzik tanıma ve kişiselleştirilmiş öneriler sunma kapasitesine sahiptir.
+  - [Project Overview](https://www.google.com/search?q=%23project-overview)
+  - [Features](https://www.google.com/search?q=%23features)
+  - [Architecture](https://www.google.com/search?q=%23architecture)
+  - [Tech Stack](https://www.google.com/search?q=%23tech-stack)
+  - [Installation](https://www.google.com/search?q=%23installation)
+  - [Configuration](https://www.google.com/search?q=%23configuration)
+  - [Database Migrations](https://www.google.com/search?q=%23database-migrations)
+  - [Running the Service](https://www.google.com/search?q=%23running-the-service)
+  - [Usage](https://www.google.com/search?q=%23usage)
+  - [Testing](https://www.google.com/search?q=%23testing)
+  - [The Mobile App](https://www.google.com/search?q=%23the-mobile-app)
+  - [Contributing](https://www.google.com/search?q=%23contributing)
+  - [License](https://www.google.com/search?q=%23license)
+  - [Contact](https://www.google.com/search?q=%23contact)
 
-## 🚀 Özellikler
+-----
 
-* **Müzik Tanıma**: Yüklenen bir ses dosyasını analiz ederek veritabanındaki şarkılarla eşleştirir.
-* **Şarkı Tavsiyesi**: Bir şarkıya dayanarak benzer şarkılardan oluşan tavsiyeler sunar.
-* **Otomatik Çalma Listesi**: Belirlenen bir şarkıya göre otomatik olarak çalma listeleri oluşturur.
-* **Kullanıcı Yönetimi ve Kimlik Doğrulama**: JWT tabanlı güvenli kullanıcı kaydı ve girişi.
-* **Kişisel Çalma Listeleri**: Kullanıcılar kendi çalma listelerini oluşturabilir, düzenleyebilir ve şarkı ekleyip çıkarabilirler.
-* **Tanıma Geçmişi**: Kullanıcıların daha önce tanıttığı şarkıların kaydını tutar.
-* **Arka Plan İşlemleri**: Müzik tanıma gibi yoğun işlemler Celery ve Redis kullanılarak arka planda asenkron olarak yürütülür.
-* **Gürültü Azaltma**: Ses dosyalarındaki gürültüyü azaltarak tanıma doğruluğunu artırır.
+## Project Overview
 
-## 🛠️ Kullanılan Teknolojiler
+TuneLeap is a high-performance music recognition and recommendation engine. It provides:
 
-* **Backend**: FastAPI, Gunicorn, Uvicorn
-* **Veritabanı**:
-    * **İlişkisel (SQL)**: PostgreSQL (SQLAlchemy ile) - Kullanıcı, şarkı, albüm gibi yapısal veriler için.
-    * **NoSQL**: MongoDB (MongoEngine ile) - Ses parmak izleri ve şarkı özellik vektörleri gibi esnek veriler için.
-* **Arka Plan İşlemleri (Asenkron)**: Celery, Redis
-* **Ses İşleme**: Librosa, NumPy, SciPy, noisereduce
-* **Kimlik Doğrulama**: JWT, Passlib, Bcrypt
-* **Containerization**: Docker, Docker Compose
-* **Test**: Pytest
+  * A **FastAPI**-driven API for submitting audio files, managing users, and getting recommendations.
+  * A **dual-database system** using **PostgreSQL** for structured data (users, song metadata) and **MongoDB** for audio fingerprints and feature vectors.
+  * **Alembic** migrations to manage the SQL database schema.
+  * A **Celery** worker that processes intensive audio tasks asynchronously.
+  * **Docker-first design** for easy, consistent deployment.
 
-## 🔧 Kurulum ve Çalıştırma
+-----
 
-Projeyi yerel makinenizde çalıştırmak için Docker ve Docker Compose'un kurulu olması gerekmektedir.
+## Features
+![transparency](https://github.com/user-attachments/assets/3373ec2b-5d76-4f6f-8f7e-185e904cdb32)
 
-1.  **Proje dosyalarını klonlayın (veya indirin).**
 
-2.  **Environment (Ortam) Değişkenleri:**
-    Projenin ana dizininde `.env` adında bir dosya oluşturun ve `docker-compose.yml` dosyasında belirtilen veritabanı ve diğer servisler için gerekli ortam değişkenlerini bu dosyaya ekleyin. Örnek bir `.env` dosyası aşağıdaki gibi olabilir:
 
-    ```env
-    # PostgreSQL Ayarları
-    POSTGRES_USER=myuser
-    POSTGRES_PASSWORD=mypassword
-    POSTGRES_DB=tunedb
-    DATABASE_URL=postgresql://myuser:mypassword@postgres:5432/tunedb
+  * **Asynchronous Recognition**
+    Jobs are enqueued using Celery and processed in the background by a dedicated worker, keeping the API responsive.
 
-    # MongoDB Ayarları
-    MONGODB_URI=mongodb://mongo:27017
-    DB_NAME=tuneleap_db
+  * **Robust Audio Fingerprinting**
+    Employs the `SpectralMatch` algorithm to generate and match fingerprints, enabling recognition of partial or noisy audio clips.
 
-    # Redis (Celery) Ayarları
-    CELERY_BROKER_URL=redis://redis:6379/0
+  * **Schema Migrations**
+    Alembic safely tracks and applies changes to the PostgreSQL schema, enabling safe, iterative development.
 
-    # JWT Ayarları
-    SECRET_KEY=COK_GIZLI_BIR_ANAHTAR_BURAYA_YAZILMALI
-    ACCESS_TOKEN_EXPIRE_MINUTES=30
+  * **Interactive API Docs**
+    FastAPI auto-generates Swagger UI and ReDoc for easy API exploration and testing at `/docs` and `/redoc`.
 
-    # Sunucu Ayarları
-    PORT=8000
-    WEB_CONCURRENCY=4
-    LOG_LEVEL=info
+  * **Comprehensive Test Suite**
+    A full suite of tests using Pytest ensures that core functionality remains stable and reliable.
+
+-----
+
+## Architecture
+
+The system is designed with a service-oriented architecture, separating the API, background worker, and databases for scalability and maintainability.
+
+
+![chart](https://github.com/user-attachments/assets/87aa2065-e2c1-48eb-bc4d-28c697e5978b)
+
+  * **FastAPI Server**: Acts as the main entry point for all client application requests. It handles various API endpoints, including authentication, playlist management, song history, and recommendations.
+  * **Core Components**: Contains the business logic, including modules for fingerprinting, database repositories, recommendation engine, security, and I/O operations.
+  * **Database Models**: The system uses a dual-database approach:
+      * **PostgreSQL**: Stores structured, relational data such as artists, albums, songs, users, playlists, and recognition history.
+      * **MongoDB**: Stores audio fingerprints for fast and efficient matching.
+  * **Celery Worker**: Offloads heavy tasks like audio processing and fingerprint extraction to run asynchronously, ensuring the API remains responsive.
+  * **Redis Task Queue**: Manages the queue of tasks for the Celery worker.
+
+-----
+
+## Tech Stack
+
+  * **Language**: Python 3.9+
+  * **Web Framework**: FastAPI
+  * **Web Server**: Gunicorn, Uvicorn
+  * **ORM / ODM**: SQLAlchemy (SQL), MongoEngine (NoSQL)
+  * **Migrations**: Alembic
+  * **Task Queue**: Celery
+  * **Broker / Cache**: Redis
+  * **Database**: PostgreSQL, MongoDB
+  * **Testing**: Pytest
+  * **Mobile App**: Flutter
+
+-----
+
+## Installation
+
+This project is containerized with Docker for simple and reliable setup.
+
+1.  **Clone the repository**
+
+    ```bash
+    git clone https://github.com/arifdag/TuneLeap-Music-Recognition.git
+    cd TuneLeap-Music-Recognition
     ```
 
-3.  **Docker Compose ile projeyi başlatın:**
-    Projenin ana dizininde aşağıdaki komutu çalıştırın:
+2.  **Create the environment file**
+    Create a `.env` file in the project root. See the [Configuration](https://www.google.com/search?q=%23configuration) section below for the required variables.
+
+3.  **Build and run the services**
 
     ```bash
     docker-compose up --build
     ```
 
-    Bu komut, `postgres`, `mongo`, `redis` ve `api` servislerini başlatacaktır. API, `http://localhost:8000` adresinde erişilebilir olacaktır.
+-----
 
-4.  **Veritabanı Migration'ları:**
-    Veritabanı tablolarını oluşturmak için Alembic migration'larını çalıştırmanız gerekebilir. API container'ı içinden bu komutu çalıştırabilirsiniz:
+## Configuration
+
+Create a `.env` file in the project root and add the following environment variables.
+
+```ini
+# PostgreSQL Settings
+POSTGRES_USER=myuser
+POSTGRES_PASSWORD=mypassword
+POSTGRES_DB=tunedb
+DATABASE_URL=postgresql://myuser:mypassword@postgres:5432/tunedb
+
+# MongoDB Settings
+MONGODB_URI=mongodb://mongo:27017
+DB_NAME=tuneleap_db
+
+# Redis (Celery) Settings
+CELERY_BROKER_URL=redis://redis:6379/0
+
+# JWT Settings
+SECRET_KEY=A_VERY_SECRET_KEY_SHOULD_BE_PLACED_HERE
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# Server Settings
+PORT=8000
+WEB_CONCURRENCY=4
+LOG_LEVEL=info
+```
+
+-----
+
+## Database Migrations
+
+After making changes to the SQLAlchemy models in `db/sql/models.py`, generate a new migration file.
+
+```bash
+# Generate a new revision
+docker-compose exec api alembic revision --autogenerate -m "Describe your model changes"
+
+# Apply the migration to the database
+docker-compose exec api alembic upgrade head
+```
+
+-----
+
+## Running the Service
+
+1.  **Start all services**
 
     ```bash
-    docker-compose exec api alembic upgrade head
+    docker-compose up
     ```
 
-## 📚 API Endpoints
+    This command starts the API server, the Celery worker, and the databases. The `run.sh` script handles the startup process inside the container.
+-----
 
-Proje, Swagger UI üzerinden interaktif bir API dokümantasyonu sunar. Projeyi çalıştırdıktan sonra `http://localhost:8000/docs` adresini ziyaret edebilirsiniz.
+## Usage
 
-### Ana Endpoints:
+The primary interaction involves uploading an audio file and polling for the result.
 
-* `POST /auth/register`: Yeni kullanıcı kaydı oluşturur.
-* `POST /auth/token`: Kullanıcı girişi yaparak JWT token alır.
-* `GET /auth/users/me`: Mevcut kullanıcı bilgilerini döndürür.
-* `POST /recognize/`: Bir ses dosyası yükleyerek müzik tanıma işlemini başlatır ve bir görev ID'si döndürür.
-* `GET /recognize/result/{task_id}`: Başlatılan tanıma görevinin sonucunu sorgular.
-* `GET /recommend/{song_id}`: Belirtilen şarkıya benzer şarkıları önerir.
-* `POST /me/playlists/`: Mevcut kullanıcı için yeni bir çalma listesi oluşturur.
-* `GET /me/playlists/`: Kullanıcının çalma listelerini listeler.
-* `POST /me/history/`: Bir tanıma sonucunu kullanıcının geçmişine ekler.
-* `GET /me/history/`: Kullanıcının tanıma geçmişini listeler.
+### 1\. Submit an Audio File for Recognition
 
-## 🧪 Testler
+Send a `POST` request with a multipart/form-data payload containing the audio file.
 
-Proje testleri Pytest kullanılarak yazılmıştır. Testleri çalıştırmak için aşağıdaki komutu projenin ana dizininde çalıştırabilirsiniz:
+`POST /recognize/`
+
+**Request:**
+
+```http
+POST /recognize/ HTTP/1.1
+Host: localhost:8000
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="my-recording.wav"
+Content-Type: audio/wav
+
+<audio file binary content>
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+```
+
+**Success Response (202 Accepted):**
+The API immediately returns a `task_id`.
+
+```json
+{
+  "task_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef"
+}
+```
+
+### 2\. Check Recognition Result
+
+Poll the results endpoint using the `task_id` from the previous step.
+
+`GET /recognize/result/{task_id}`
+
+**Pending Response:**
+
+```json
+{
+  "status": "PENDING"
+}
+```
+
+**Completed Response (200 OK):**
+
+```json
+{
+  "status": "SUCCESS",
+  "results": [
+    {
+      "song_id": 101,
+      "probability": 0.98,
+      "match_score": 150,
+      "title": "Bohemian Rhapsody",
+      "artist_id": 25,
+      "artist_name": "Queen",
+      "album_id": 42,
+      "album_name": "A Night at the Opera",
+      "album_image": "http://example.com/album_art.jpg"
+    }
+  ]
+}
+```
+
+-----
+
+## Testing
+
+Run the full test suite using Pytest. The command will discover and run all tests in the `tests/` directory.
 
 ```bash
 pytest
 ```
 
-## 📂 Proje Yapısı
+-----
 
-```
-/
-├── api/                # FastAPI uygulama kodları ve endpointler
-│   ├── v1/             # API version 1 endpointleri (auth, playlists, recognition vb.)
-│   └── main.py         # Ana FastAPI uygulaması
-├── core/               # Ana iş mantığı
-│   ├── fingerprint/    # Ses parmak izi çıkarma ve eşleştirme
-│   ├── reco/           # Tavsiye motoru ve özellik çıkarma
-│   └── repository/     # Veritabanı işlemleri için repository sınıfları
-├── db/                 # Veritabanı konfigürasyonları
-│   ├── sql/            # SQL (PostgreSQL) modelleri ve ayarları
-│   └── nosql/          # NoSQL (MongoDB) koleksiyonları ve ayarları
-├── worker/             # Celery worker ve arka plan görevleri
-├── tests/              # Pytest test dosyaları
-├── alembic/            # Veritabanı migration dosyaları
-├── docker-compose.yml  # Docker servis tanımlamaları
-├── requirements.txt    # Proje bağımlılıkları
-└── run.sh              # Sunucuyu ve Celery worker'ı başlatan betik
-```
+## The Mobile App
+
+This project includes a fully-featured Flutter application that consumes the API.
+
+| Login Screen                                      | Recognition Screen                                      | Result Screen                                    |
+| ------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------ |
+|![image](https://github.com/user-attachments/assets/8b67c82d-ac49-4e47-b300-72eb4a5d7b35)| ![image](https://github.com/user-attachments/assets/0aa30245-6e84-4255-9675-0e5a3577b0aa)| ![image](https://github.com/user-attachments/assets/95bcca55-bd09-4df4-910f-6a137f774ba6) |
+
+-----
+
+## Contributing
+
+Contributions are welcome\! Please follow these steps:
+
+1.  Fork this repository.
+2.  Create a feature branch (`git checkout -b feat/YourAmazingFeature`).
+3.  Commit your changes (`git commit -m "Add some amazing feature"`).
+4.  Push to your branch (`git push origin feat/YourAmazingFeature`).
+5.  Open a Pull Request.
+
+Please ensure your code adheres to the existing style and that you add tests for any new features.
+
+-----
+
+## License
+
+This project is licensed under the MIT License.
+
+-----
+
+## Contact
+
+`dg.arifdag@gmail.com`
