@@ -1,0 +1,31 @@
+# Web & Server
+fastapi
+gunicorn
+uvicorn[standard]
+python-multipart
+
+# Database & ORM
+alembic
+sqlalchemy
+psycopg2-binary
+mongoengine
+motor
+redis
+
+# Background Worker
+celery
+
+# Audio & Scientific Computing
+librosa
+noisereduce
+numpy
+scipy
+soundfile
+
+# Security & Authentication
+python-jose[cryptography]
+PyJWT
+passlib[bcrypt]==1.7.4
+bcrypt==3.2.0
+email-validator
+pydantic[email]

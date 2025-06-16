@@ -1,0 +1,5 @@
+﻿# Development and Testing Dependencies
+pytest
+httpx
+mongomock
+python-dotenv

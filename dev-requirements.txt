@@ -1,5 +1,3 @@
-﻿# Development and Testing Dependencies
-pytest
-httpx
-mongomock
-python-dotenv
+# This file is kept for backward compatibility
+# The actual file is now located at config/dev-requirements.txt
+-include config/dev-requirements.txt 

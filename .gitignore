@@ -79,5 +79,12 @@ yarn-error.log*
 
 core/populate/
 
+# Temporary files
+temp/
+
+# Configuration files in the new structure are tracked
+# config/alembic.ini is tracked, but not the following:
+# config/.env*
+
 # Migration files (optional, uncomment if needed)
 # alembic/versions/ 
