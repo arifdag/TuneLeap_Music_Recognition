@@ -1,19 +1,19 @@
 ## Table of Contents
 
-  - [Project Overview](https://www.google.com/search?q=%23project-overview)
-  - [Features](https://www.google.com/search?q=%23features)
-  - [Architecture](https://www.google.com/search?q=%23architecture)
-  - [Tech Stack](https://www.google.com/search?q=%23tech-stack)
-  - [Installation](https://www.google.com/search?q=%23installation)
-  - [Configuration](https://www.google.com/search?q=%23configuration)
-  - [Database Migrations](https://www.google.com/search?q=%23database-migrations)
-  - [Running the Service](https://www.google.com/search?q=%23running-the-service)
-  - [Usage](https://www.google.com/search?q=%23usage)
-  - [Testing](https://www.google.com/search?q=%23testing)
-  - [The Mobile App](https://www.google.com/search?q=%23the-mobile-app)
-  - [Contributing](https://www.google.com/search?q=%23contributing)
-  - [License](https://www.google.com/search?q=%23license)
-  - [Contact](https://www.google.com/search?q=%23contact)
+- [Project Overview](#project-overview)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Database Migrations](#database-migrations)
+- [Running the Service](#running-the-service)
+- [Usage](#usage)
+- [Testing](#testing)
+- [The Mobile App](#the-mobile-app)
+- [Contributing](#contributing)
+- [License](#license)
+- [Contact](#contact)
 
 -----
 
