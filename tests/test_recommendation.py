@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from core.reco.engine import RecommenderEngine
 from core.reco.builder import PlaylistBuilder
-from api.v1.playlists import router as reco_router
+from api.v1.song_recommendations import router as reco_router
 
 @pytest.fixture
 def sample_feature_map(monkeypatch):

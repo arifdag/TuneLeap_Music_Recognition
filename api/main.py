@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from api.v1.songs import router as songs_router
 from api.v1.recognition import router as recog_router
-from api.v1.playlists import router as rec_router, playlist_router
+from api.v1.song_recommendations import router as rec_router, playlist_router
 from api.v1 import auth as auth_router
 from api.v1 import user_playlists as user_playlists_router
 from api.v1 import user_history as user_history_router

@@ -3,11 +3,11 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from db.sql.database import get_db
-from db.sql.models import User # For current_user dependency
-from api.v1.auth import get_current_active_user # Auth dependency
+from db.sql.models import User
+from api.v1.auth import get_current_active_user
 from api.schemas.history_schemas import RecognitionHistoryCreate, RecognitionHistoryResponse
 from core.repository.history_repository import RecognitionHistoryRepository
-from core.repository.song_repository import SongRepository # To verify song exists
+from core.repository.song_repository import SongRepository
 
 router = APIRouter(prefix="/me/history", tags=["User Recognition History"])
 
@@ -34,14 +34,19 @@ def record_recognition_event(
     if not history_event:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not record history event.")
     
-    # Load relationships to populate artist_name and album_image
-    db.refresh(history_event, ["song", "song.artist", "song.album"])
+
+    db.refresh(history_event, ["song"])
     
-    # Set artist_name and album_image fields
-    if history_event.song and history_event.song.artist:
-        history_event.song.artist_name = history_event.song.artist.name
-    if history_event.song and history_event.song.album:
-        history_event.song.album_image = history_event.song.album.album_image
+
+    if history_event.song:
+        # Refresh song to load its relationships
+        db.refresh(history_event.song)
+        
+        # Set artist_name and album_image fields
+        if history_event.song.artist:
+            history_event.song.artist_name = history_event.song.artist.name
+        if history_event.song.album:
+            history_event.song.album_image = history_event.song.album.album_image
     
     return history_event
 

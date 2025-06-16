@@ -14,7 +14,7 @@ from db.nosql.collections import Fingerprint
 from api.main import app as main_app
 from api.v1.songs import router as songs_router
 from api.v1.recognition import router as recog_router
-from api.v1.playlists import router as rec_router, playlist_router
+from api.v1.song_recommendations import router as rec_router, playlist_router
 from db.sql.database import get_db
 from core.fingerprint.extractor import extract_fingerprint
 from scipy.io.wavfile import write as wav_write

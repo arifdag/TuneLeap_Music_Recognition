@@ -22,7 +22,17 @@ class RecognitionHistoryRepository:
         )
         self.session.add(db_history_event)
         self.session.commit()
-        self.session.refresh(db_history_event)
+        # Refresh with explicit query to ensure relationships are loaded
+        db_history_event = (
+            self.session.query(RecognitionHistory)
+            .filter(RecognitionHistory.id == db_history_event.id)
+            .options(
+                joinedload(RecognitionHistory.song),
+                joinedload(RecognitionHistory.song).joinedload(Song.artist),
+                joinedload(RecognitionHistory.song).joinedload(Song.album)
+            )
+            .first()
+        )
         return db_history_event
 
     def get_recognition_history_for_user(
